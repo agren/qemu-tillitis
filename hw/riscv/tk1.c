@@ -25,6 +25,7 @@
 #include "hw/riscv/boot.h"
 #include "qemu/units.h"
 #include "sysemu/sysemu.h"
+#include "ui/console.h"
 #include "hw/riscv/tillitis_cpu.h"
 #include "hw/char/riscv_htif.h"
 #include "qapi/qmp/qerror.h"
@@ -157,7 +158,7 @@ static void tk1_mmio_write(void *opaque, hwaddr addr, uint64_t val, unsigned siz
         return;
 
     case TK1_MMIO_TOUCH_STATUS:
-        // Always touched, we don't care about touch reset
+        s->touch_event = false;
         return;
 
     case TK1_MMIO_TK1_SWITCH_APP:
@@ -365,8 +366,10 @@ static uint64_t tk1_mmio_read(void *opaque, hwaddr addr, unsigned size)
         break;
 
     case TK1_MMIO_TOUCH_STATUS:
-        // Always touched
-        return 1 << TK1_MMIO_TOUCH_STATUS_EVENT_BIT;
+        if (s->touch_event) {
+            return 1 << TK1_MMIO_TOUCH_STATUS_EVENT_BIT;
+        }
+        return 0;
 
     case TK1_MMIO_TK1_NAME0:
         return 0x746b3120; // "tk1 "
@@ -425,6 +428,16 @@ static void tk1_timer_tick(void *opaque)
     }
 }
 
+static void kbd_event_handler(void *opaque, int keycode)
+{
+    TK1State *s = (TK1State *) opaque;
+
+    bool is_keydown_event = (keycode & 0x80) == 0;
+    if (is_keydown_event) {
+        s->touch_event = true;
+    }
+}
+
 static void tk1_board_init(MachineState *machine)
 {
     MachineClass *mc = MACHINE_GET_CLASS(machine);
@@ -464,6 +477,11 @@ static void tk1_board_init(MachineState *machine)
         0x04050607
     };
     memcpy(s->udi, udi, 8);
+
+    if (!qemu_add_kbd_event_handler(kbd_event_handler, s)) {
+        error_report("Could not add kbd event handler");
+        exit(EXIT_FAILURE);
+    }
 
     if (!tk1_setup_chardev(s, &err)) {
         error_report_err(err);

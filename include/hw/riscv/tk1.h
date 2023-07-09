@@ -60,6 +60,7 @@ typedef struct TK1State {
     uint32_t timer_prescaler;
     bool timer_running;
     uint32_t timer_interval;
+    bool touch_event;
 } TK1State;
 
 #define TYPE_TK1_MACHINE MACHINE_TYPE_NAME("tk1")
